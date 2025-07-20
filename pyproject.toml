@@ -1,0 +1,18 @@
+[project]
+name = "aml-multiagent-rag"
+version = "0.1.0"
+description = "Multi-Agent RAG platform using Vector DBs and AI models for AML/FT compliance queries."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "uvicorn>=0.35.0",
+    "fastapi>=0.116.1",
+    "langchain>=0.3.26",
+    "openai>=1.97.0",
+    "llama-index>=0.12.50",
+    "qdrant-client>=1.15.0",
+    "pymupdf>=1.26.3",
+    "pydantic>=2.11.7",
+    "python-dotenv>=1.1.1",
+    "pydantic-settings>=2.10.1"
+]
