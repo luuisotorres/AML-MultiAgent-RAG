@@ -48,7 +48,7 @@ class OpenAIEmbeddings:
             batch_size (int): Number of documents to process per batch.
                               Default is 100.
         """
-        self.api_key = api_key or settings.openai_api_key
+        self.api_key = api_key or settings.OPENAI_API_KEY
         self.model = model or settings.embedding_model
         self.batch_size = batch_size
 

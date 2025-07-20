@@ -87,7 +87,7 @@ async def query_aml_documents(request: QueryRequest):
         sources = [
             Source(
                 filename=doc['filename'],
-                jurisdiction=doc['region'],
+                jurisdiction=doc.get('region') or doc.get('source_region', ""),
                 language=doc['language'],
                 chunk_text=(
                     doc['content'][:500] + "..."

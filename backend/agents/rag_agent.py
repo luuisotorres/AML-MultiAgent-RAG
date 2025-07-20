@@ -145,7 +145,7 @@ class AMLRagAgent:
                     "content": hit.payload.get("content", ""),
                     "filename": hit.payload.get("filename", ""),
                     "language": hit.payload.get("language", ""),
-                    "region": hit.payload.get("region", ""),
+                    "region": hit.payload.get("source_region", ""),
                     "score": hit.score
                 }
                 documents.append(doc)
