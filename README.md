@@ -12,7 +12,6 @@ A Multi-Agent RAG platform using Vector DBs and AI models to accurately answer A
   ![uv](https://img.shields.io/badge/uv-DE5FE9?style=for-the-badge&logoColor=white)
 
 
-
 </div>
 
 <div align="center">
@@ -23,10 +22,15 @@ A Multi-Agent RAG platform using Vector DBs and AI models to accurately answer A
 ## Table of Contents
 1. [Core Concepts](#core-concepts)
 2. [The AML Use Case](#the-aml-use-case)
-3. [Workflow](#workflow)
-4. [Technology Stack](#technology-stack)
-5. [Setup and Installation](#setup-and-installation)
-6. [Running the Pipeline](#running-the-pipeline)
+3. [Workflows](#workflows)
+   - [Data Ingestion Pipeline](#data-ingestion-pipeline)
+   - [RAG System Workflow](#rag-system-workflow)
+4. [RAG System](#rag-system)
+5. [Technology Stack](#technology-stack)
+6. [Setup and Installation](#setup-and-installation)
+7. [Running the Document Ingestion Pipeline](#running-the-document-ingestion-pipeline)
+8. [Running the Complete System](#running-the-complete-system)
+9. [Future Roadmap](#future-roadmap)
 
 ## Core Concepts
 
@@ -69,9 +73,13 @@ The system is trained on a collection of AML/FT regulatory documents from **thre
 - **Circular BCB 4001** (`C_Circ_4001_v2_P.pdf`) - Central Bank of Brazil AML/CFT regulations
 - **Circular BCB 3978** (`Circ_3978_v3_P.pdf`) - Customer Due Diligence requirements
 
-## Workflow
+## Workflows
 
-The core of this project is a data ingestion pipeline that processes raw regulatory documents and prepares them for the RAG system.
+This project consists of two main workflows: the **Data Ingestion Pipeline** that processes and stores regulatory documents, and the **RAG System Workflow** that handles intelligent query processing.
+
+### Data Ingestion Pipeline
+
+The data ingestion pipeline processes raw regulatory documents and prepares them for the RAG system.
 
 ![data-ingestion-pipeline](assets/data-ingestion-pipeline.png)
 
@@ -98,6 +106,40 @@ The core of this project is a data ingestion pipeline that processes raw regulat
     *   Connects to the **Qdrant** vector database.
     *   Creates a collection named `aml-documents`.
     *   Uploads (upserts) the vector embeddings along with their metadata (filename, language, source region, etc.) into the collection.
+
+### Vector Database Results
+
+Once the pipeline is complete, you can visualize your populated vector database through the Qdrant dashboard:
+
+![Qdrant Collections](assets/qdrant_collections.png)
+
+*The Qdrant dashboard showing our `aml-documents` collection with embedded regulatory content*
+
+![Qdrant AML Collection Details](assets/qdrant_aml_documents_collections.png)
+
+*Detailed view of the AML documents collection with vector embeddings and metadata*
+
+![Qdrant Graph Visualization](assets/qdrant_graph.png)
+
+*Vector space visualization showing the semantic relationships between document chunks*
+
+---
+
+### RAG System Workflow
+
+Once the vector database is populated, the RAG system handles user queries through the following intelligent workflow:
+
+![rag-system-workflow](assets/rag-system-workflow.png)
+
+**RAG System Process:**
+
+1. **Query Reception & Language Detection**: Analyze incoming query to determine language (Portuguese/English)
+2. **Embedding Generation**: Convert query text into vector representation using OpenAI embeddings
+3. **Vector Search**: Perform semantic similarity search in Qdrant to find relevant document chunks
+4. **Context Preparation**: Extract and format retrieved documents with metadata (filename, jurisdiction, language)
+5. **Answer Generation**: Use GPT-4 with language-appropriate system prompts and retrieved context
+6. **Response Enhancement**: Add source citations, confidence scores, and jurisdiction identification
+7. **API Response**: Format and return structured response with answer, sources, and metadata
 
 ## Technology Stack
 *   **Programming Language:** Python 3.11+
@@ -170,7 +212,7 @@ We use Docker to run the Qdrant vector database because it provides a consistent
     You can explore your vector database through a graphical interface by navigating to the following URL in your browser:
     *   **URL:** [http://localhost:6333/dashboard](http://localhost:6333/dashboard)
 
-## Running the Pipeline
+## Running the Document Ingestion Pipeline
 Execute the following scripts in order from the project root directory to process your documents and populate the vector database.
 
 1.  **Process PDFs:**
@@ -193,8 +235,73 @@ Execute the following scripts in order from the project root directory to proces
     python3 -m backend.services.vector_db.qdrant_client
     ```
 
-After completing these steps, your vector database will be populated and ready for the next phase: building the agentic layer to query the data.
+After completing these steps, your vector database will be populated and ready for the RAG system.
 
+## RAG System
+
+The AML RAG Agent provides intelligent querying capabilities over the processed regulatory documents. The system combines vector similarity search with OpenAI's language models to deliver accurate, contextual responses with proper source attribution.
+
+### Core Features
+
+- **Multi-jurisdictional Intelligence**: Handles queries across US, EU, and Brazilian regulations
+- **Semantic Search**: Vector-based similarity search for relevant document chunks
+- **Language Detection**: Automatically detects Portuguese and English queries
+- **Source Attribution**: Every response includes source documents and confidence scores
+- **Real-time Processing**: Instant responses to complex compliance queries
+
+### Live API Documentation
+
+The system provides a FastAPI-based REST API with automatic documentation via Swagger UI:
+
+![Swagger UI Interface](assets/Swagger_UI.png)
+
+*Interactive API documentation for testing queries in real-time*
+
+### API Endpoints
+
+- **`POST /api/v1/query`** - Submit AML compliance questions
+- **`GET /api/v1/health`** - Check system health and agent status  
+- **`GET /api/v1/info`** - Get API capabilities and documentation
+
+### Query Examples
+
+The RAG agent can handle complex compliance questions across different jurisdictions:
+
+![Swagger UI Response](assets/swagger_ui_response.png)
+
+*Example response showing source attribution, confidence scoring, and jurisdiction identification*
+
+**Sample English Queries:**
+```
+"What are the customer identification program (CIP) requirements under the USA PATRIOT Act?"
+"How do enhanced due diligence measures differ between US and EU regulations?"
+```
+
+**Sample Portuguese Queries:**
+```
+"Quais são os procedimentos de conhecimento do cliente exigidos pelo Banco Central do Brasil?"
+"O que estabelece a Circular 4001 sobre clientes de alto risco?"
+```
+
+## Running the Complete System
+
+### **Start the API Server**
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Start the FastAPI server
+python3 -m uvicorn backend.api.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### **Access the Interface**
+- **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Qdrant Dashboard**: [http://localhost:6333/dashboard](http://localhost:6333/dashboard)
+
+## Future Roadmap
+
+- Integrate multi-agent coordination to enrich responses.
+- Build front-end interface
 
 ## Author
 
