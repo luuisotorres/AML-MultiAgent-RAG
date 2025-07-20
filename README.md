@@ -91,7 +91,7 @@ The core of this project is a data ingestion pipeline that processes raw regulat
     *   Loads the text chunks.
     *   Uses OpenAI's `text-embedding-3-small` model to convert each chunk into a 1536-dimension vector embedding.
     *   Processes chunks in batches to efficiently interact with the OpenAI API.
-    *   Saves the documents with their corresponding embeddings to `docs/processed_docs/embedded_docs.json`.
+    *   Saves the documents with their corresponding embeddings to `docs/embeddings/embedded_docs.json`.
 
 4.  **Vector DB Storage (`qdrant_client.py`):**
     *   Loads the embedded documents.

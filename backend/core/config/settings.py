@@ -9,6 +9,7 @@ Manages environment variables and application settings for:
 """
 from pydantic_settings import BaseSettings
 from typing import Optional
+from functools import lru_cache
 
 
 class Settings(BaseSettings):
@@ -20,7 +21,7 @@ class Settings(BaseSettings):
     or .env file.
     """
     # OpenAI API key
-    openai_api_key: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
 
     # Vector DB configuration
     qdrant_url: str = "http://localhost:6333"
@@ -39,4 +40,9 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 
-settings = Settings()
+@lru_cache()
+def get_settings():
+    return Settings()
+
+
+settings = get_settings()

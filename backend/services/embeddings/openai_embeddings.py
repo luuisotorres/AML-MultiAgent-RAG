@@ -150,7 +150,7 @@ class OpenAIEmbeddings:
 
     def save_embeddings(
         self, embedded_docs: List[Dict],
-        output_path: str = "docs/processed_docs/embedded_docs.json"
+        output_path: str = "docs/embeddings/embedded_docs.json"
     ) -> str:
         """
         Save embedded documents to a JSON file for vector database storage.

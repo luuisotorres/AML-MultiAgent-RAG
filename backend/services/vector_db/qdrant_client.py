@@ -275,7 +275,7 @@ class QdrantVectorDB:
 if __name__ == "__main__":
     logger.info("Qdrant Vector DB service initialized.")
 
-    embedded_file = 'docs/processed_docs/embedded_docs.json'
+    embedded_file = 'docs/embeddings/embedded_docs.json'
 
     if not os.path.exists(embedded_file):
         logger.error(f"Embedded documents file not found: {embedded_file}")
