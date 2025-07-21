@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 # Create router for enhanced multi-agent endpoints
 multi_agent_router = APIRouter(
-    prefix="/multi-agent",
     tags=["Multi-Agent RAG System"]
 )
 
