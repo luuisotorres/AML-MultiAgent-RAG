@@ -26,7 +26,7 @@ from backend.agents.rag_agent import AMLRagAgent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Query"])
+router = APIRouter(tags=["Single RAG Agent"])
 
 try:
     rag_agent = AMLRagAgent()
@@ -66,7 +66,21 @@ class QueryResponse(BaseModel):
     confidence: float = 0.0
 
 
-@router.post("/query", response_model=QueryResponse)
+@router.post(
+    "/query",
+    response_model=QueryResponse,
+    summary="AML query with a single RAG agent",
+    description="""
+    Query the AML document database using a single RAG agent.
+
+    Features:
+    - Semantic Search: Finds relevant AML documents using vector search
+    - Auto Language Detection: Supports English and Portuguese automatically
+    - Source Attribution: Includes document citations and confidence scores
+    from Qdrant vector database
+    - Jurisdiction Aware: Identifies relevant regulatory jurisdictions
+    """
+)
 async def query_aml_documents(request: QueryRequest):
     """
     Query the AML document database using RAG.
@@ -180,21 +194,23 @@ async def get_api_info():
         dict: Information about the API
     """
     return {
-        "name": "AML MultiAgent RAG API",
+        "name": "AML Single RAG Agent API",
         "version": "1.0.0",
-        "description": "AI-powered AML/CFT regulatory compliance assistant",
+        "description": "AML/CFT regulatory compliance AI agent",
         "supported_languages": ["English", "Portuguese"],
         "supported_jurisdictions": ["USA", "EU", "Brazil"],
         "features": [
-            "Natural language queries",
             "Automatic language detection",
             "Multi-jurisdictional search",
-            "Source citation",
-            "Confidence scoring"
+            "Source citation with confidence scoring",
+            "Semantic document retrieval"
         ],
         "endpoints": [
-            "POST /api/v1/query - Submit compliance questions",
+            "POST /api/v1/query - Fast AML compliance queries",
             "GET /api/v1/health - Check service health",
             "GET /api/v1/info - Get API information"
-        ]
+        ],
+        "enhanced_version": (
+            "Use /api/v1/multi-agent/query for quality-validated responses"
+        )
     }
