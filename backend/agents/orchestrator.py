@@ -57,13 +57,16 @@ class MultiAgentOrchestrator:
 
     async def process_query(
         self,
-        query: str
+        query: str,
+        include_detailed_analysis: bool = True
     ) -> Dict[str, Any]:
         """
         Process a query through the multi-agent pipeline.
 
         Args:
             query (str): The user's AML compliance question
+            include_detailed_analysis (bool): Whether to include detailed
+                analysis
 
         Returns:
             Dict[str, Any]: Comprehensive response with quality metrics
@@ -112,7 +115,8 @@ class MultiAgentOrchestrator:
                 query=query,
                 rag_response=rag_response,
                 consistency_result=consistency_result,
-                confidence_result=confidence_result
+                confidence_result=confidence_result,
+                include_detailed_analysis=include_detailed_analysis
             )
 
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -140,7 +144,8 @@ class MultiAgentOrchestrator:
         query: str,
         rag_response: Dict[str, Any],
         consistency_result: Dict[str, Any],
-        confidence_result: Dict[str, Any]
+        confidence_result: Dict[str, Any],
+        include_detailed_analysis: bool = True
     ) -> Dict[str, Any]:
         """
         Combine results from all agents into a comprehensive response.
@@ -150,6 +155,8 @@ class MultiAgentOrchestrator:
             rag_response (Dict[str, Any]): RAG agent response
             consistency_result (Dict[str, Any]): Consistency validation results
             confidence_result (Dict[str, Any]): Confidence evaluation results
+            include_detailed_analysis (bool): Whether to include detailed
+                analysis
 
         Returns:
             Dict[str, Any]: Combined response with quality metrics
@@ -192,6 +199,13 @@ class MultiAgentOrchestrator:
                 "manual review recommended"
             )
 
+        detailed_analysis = None
+        if include_detailed_analysis:
+            detailed_analysis = self._create_detailed_analysis(
+                rag_response, consistency_result,
+                confidence_result, quality_gates
+            )
+
         response = {
             "success": True,
             "query": query,
@@ -207,6 +221,7 @@ class MultiAgentOrchestrator:
             "quality_assessment": quality_assessment,
 
             "recommendations": list(set(all_recommendations)),
+            "detailed_analysis": detailed_analysis,
 
             "metadata": {
                 "detected_language": rag_response.get("detected_language", ""),
@@ -247,6 +262,125 @@ class MultiAgentOrchestrator:
         """
         quality_score = (consistency_score * 0.6) + (confidence_score * 0.4)
         return min(max(quality_score, 0.0), 1.0)
+
+    def _create_detailed_analysis(
+        self,
+        rag_response: Dict[str, Any],
+        consistency_result: Dict[str, Any],
+        confidence_result: Dict[str, Any],
+        quality_gates: Dict[str, bool]
+    ) -> Dict[str, Any]:
+        """
+        Create detailed analysis breakdown for debugging and transparency.
+
+        Args:
+            rag_response: RAG agent response
+            consistency_result: Consistency agent analysis
+            confidence_result: Confidence agent analysis
+            quality_gates: Quality gate results
+
+        Returns:
+            Dict containing detailed analysis breakdown
+        """
+        sources = rag_response.get("sources", [])
+        rag_analysis = {
+            "sources_count": len(sources),
+            "average_relevance_score": self._calculate_avg_source_score(
+                sources
+            ),
+            "source_breakdown": [
+                {
+                    "title": source.get("filename", "Unknown"),
+                    "score": source.get("score", 0.0),
+                    "content_length": len(source.get("content", ""))
+                }
+                for source in sources[:5]
+            ],
+            "detected_language": rag_response.get("detected_language", ""),
+            "relevant_jurisdictions": rag_response.get(
+                "relevant_jurisdictions", []
+            )
+        }
+
+        contradiction_details = consistency_result.get(
+            "contradiction_details", {}
+        )
+        factual_alignment = consistency_result.get("factual_alignment", {})
+
+        consistency_analysis = {
+            "overall_score": consistency_result.get("overall_score", 0.0),
+            "is_consistent": consistency_result.get("is_consistent", False),
+            "checks_performed": {
+                "contradiction_check": {
+                    "passed": not contradiction_details.get(
+                        "has_contradictions", False
+                    ),
+                    "score": contradiction_details.get(
+                        "contradiction_score", 0.0
+                    ),
+                    "issues_found": len(
+                        contradiction_details.get("contradictions", [])
+                    )
+                },
+                "factual_alignment": {
+                    "score": factual_alignment.get("alignment_score", 0.0),
+                    "supported_claims": factual_alignment.get(
+                        "supported_claims", 0
+                    ),
+                    "unsupported_claims": factual_alignment.get(
+                        "unsupported_claims", 0
+                    )
+                }
+            },
+            "recommendations": consistency_result.get("recommendations", [])
+        }
+
+        confidence_analysis = {
+            "confidence_score": confidence_result.get("confidence_score", 0.0),
+            "confidence_level": confidence_result.get(
+                "confidence_level", "low"
+            ),
+            "components": {
+                "source_reliability": confidence_result.get(
+                    "source_reliability", 0.0
+                ),
+                "answer_completeness": confidence_result.get(
+                    "answer_completeness", 0.0
+                ),
+                "topic_coverage": confidence_result.get("topic_coverage", 0.0)
+            },
+            "quality_indicators": confidence_result.get(
+                "quality_indicators", {}
+            ),
+            "recommendations": confidence_result.get("recommendations", [])
+        }
+
+        total_recs = (
+            len(consistency_result.get("recommendations", [])) +
+            len(confidence_result.get("recommendations", []))
+        )
+
+        overall_assessment = {
+            "quality_gates_passed": {
+                "consistency": quality_gates.get("consistency_passed", False),
+                "confidence": quality_gates.get("confidence_passed", False),
+                "overall": quality_gates.get("overall_passed", False)
+            },
+            "processing_summary": {
+                "agents_involved": [
+                    "RAG Agent", "Consistency Agent", "Confidence Agent"
+                ],
+                "validation_steps": 3,
+                "total_recommendations": total_recs
+            }
+        }
+
+        return {
+            "rag_analysis": rag_analysis,
+            "consistency_analysis": consistency_analysis,
+            "confidence_analysis": confidence_analysis,
+            "overall_assessment": overall_assessment
+        }
 
     def _calculate_avg_source_score(
         self, sources: List[Dict[str, Any]]

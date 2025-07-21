@@ -54,6 +54,10 @@ class MultiAgentQueryRequest(BaseModel):
             "high-risk customers in Brazil?"
         )
     )
+    include_detailed_analysis: bool = Field(
+        default=True,
+        description="Whether to include detailed breakdown of agent analysis"
+    )
 
 
 class QualityGates(BaseModel):
@@ -108,7 +112,11 @@ class MultiAgentQueryResponse(BaseModel):
 
     detailed_analysis: Optional[dict] = Field(
         default=None,
-        description="Detailed analysis results"
+        description=(
+            "Detailed breakdown of agent analysis results including "
+            "RAG analysis, consistency analysis, confidence analysis, "
+            "and overall assessment"
+        )
     )
 
 
@@ -157,7 +165,8 @@ async def query_aml_documents(request: MultiAgentQueryRequest):
         )
 
         result = await orchestrator.process_query(
-            query=request.question
+            query=request.question,
+            include_detailed_analysis=request.include_detailed_analysis
         )
 
         if not result.get("success", False):

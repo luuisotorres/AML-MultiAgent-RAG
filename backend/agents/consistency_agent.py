@@ -60,7 +60,9 @@ class ConsistencyAgent:
             jurisdiction_check = self._validate_jurisdictions(
                 question, sources
             )
-            contradiction_check = self._check_contradictions(sources)
+            contradiction_check = self._check_contradictions(
+                question, answer, sources
+            )
             relevance_check = self._validate_relevance(
                 question, sources
             )
@@ -264,12 +266,17 @@ class ConsistencyAgent:
             )
 
     def _check_contradictions(
-        self, sources: List[Dict[str, Any]]
+        self,
+        question: str,
+        answer: str,
+        sources: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        Check for contradictory information in source documents.
+        Check for contradictions within the agent's answer.
 
         Args:
+            question (str): User question
+            answer (str): Agent's answer
             sources (List[Dict[str, Any]]): Source documents
 
         Returns:
@@ -278,47 +285,79 @@ class ConsistencyAgent:
         logger.debug("Checking for contradictions...")
 
         try:
+            sentences = answer.split('. ')
+
+            if len(sentences) < 2:
+                logger.debug("Answer too short for contradiction check")
+
+                return {
+                    "score": 1.0,
+                    "contradictions": [],
+                    "issues": []
+                }
+
+            contradictions = []
+
             contradiction_patterns = [
-                (["required", "mandatory"], ["optional", "voluntary"]),
-                (["must", "shall"], ["may", "can"]),
-                (["prohibited", "forbidden"], ["allowed", "permitted"]),
-                (["minimum"], ["maximum"]),
+                (
+                    ["required", "mandatory", "must"],
+                    ["optional", "voluntary", "may"]
+                ),
+                (
+                    ["prohibited", "forbidden", "banned"],
+                    ["allowed", "permitted", "can"]
+                ),
+                (
+                    ["minimum of", "at least"],
+                    ["maximum of", "no more than"]
+                ),
             ]
 
-            contradictions_found = []
-            source_contents = (
-                [
-                    doc.get("content", "").lower() for doc in sources
-                ]
+            for pattern in contradiction_patterns:
+                positive_sentences = []
+                negative_sentences = []
+
+                for i, sentence in enumerate(sentences):
+                    sentence_lower = sentence.lower()
+                    if any(
+                        term in sentence_lower for term in pattern[0]
+                    ):
+                        positive_sentences.append(i)
+                    if any(
+                        term in sentence_lower for term in pattern[1]
+                    ):
+                        negative_sentences.append(i)
+
+                if positive_sentences and negative_sentences:
+                    logger.debug(
+                        f"Found potential contradiction: {pattern[0][0]} vs "
+                        f"{pattern[1][0]} "
+                        f"in sentences {positive_sentences} and "
+                        f"{negative_sentences}"
+                    )
+                    contradictions.append(
+                        {
+                            "type": f"{pattern[0][0]} vs {pattern[1][0]}",
+                            "positive_sentences": positive_sentences,
+                            "negative_sentences": negative_sentences
+                        }
+                    )
+
+            score = max(1.0 - (len(contradictions) * 0.4), 0.0)
+
+            logger.debug(
+                f"Contradiction check completed - "
+                f"{len(contradictions)} contradictions found - "
+                f"Score: {score}"
             )
-
-            for positive_terms, negative_terms in contradiction_patterns:
-                positive_sources = []
-                negative_sources = []
-
-                for i, content in enumerate(source_contents):
-                    if any(term in content for term in positive_terms):
-                        positive_sources.append(i)
-                    if any(term in content for term in negative_terms):
-                        negative_sources.append(i)
-
-                if positive_sources and negative_sources:
-                    contradictions_found.append({
-                        "type": f"{positive_terms[0]} vs {negative_terms[0]}",
-                        "positive_sources": positive_sources,
-                        "negative_sources": negative_sources
-                    })
-
-            # Score based on contradictions found
-            score = max(1.0 - (len(contradictions_found) * 0.3), 0.0)
 
             return {
                 "score": score,
-                "contradictions": contradictions_found,
+                "contradictions": contradictions,
                 "issues": (
                     [
                         f"Potential contradiction: {c['type']}"
-                        for c in contradictions_found
+                        for c in contradictions
                     ]
                 )
             }
