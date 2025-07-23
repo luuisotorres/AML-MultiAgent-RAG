@@ -41,6 +41,10 @@ class QueryRequest(BaseModel):
         ...,
         min_length=3,
         max_length=1000,
+        example=(
+            "What are the customer identification requirements for "
+            "high-risk customers in Brazil?"
+        ),
         description=(
             "The AML/CFT compliance question to query the document database."
         )
@@ -52,10 +56,10 @@ class Source(BaseModel):
     Information about the source document used in the answer.
     """
     filename: str
-    jurisdiction: str
+    region: str
     language: str
-    chunk_text: str
-    confidence: float
+    content: str
+    score: float
 
 
 class QueryResponse(BaseModel):
@@ -101,14 +105,10 @@ async def query_aml_documents(request: QueryRequest):
         sources = [
             Source(
                 filename=doc['filename'],
-                jurisdiction=doc.get('region') or doc.get('source_region', ""),
+                region=doc.get('region') or doc.get('source_region', ""),
                 language=doc['language'],
-                chunk_text=(
-                    doc['content'][:500] + "..."
-                    if len(doc['content']) > 500
-                    else doc['content']
-                ),
-                confidence=doc.get('score', 0.0)
+                content=doc['content'],
+                score=doc.get('score', 0.0)
             )
             for doc in result['sources']
         ]
