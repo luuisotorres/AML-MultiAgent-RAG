@@ -302,36 +302,10 @@ class MultiAgentOrchestrator:
             )
         }
 
-        contradiction_details = consistency_result.get(
-            "contradiction_details", {}
-        )
-        factual_alignment = consistency_result.get("factual_alignment", {})
-
         consistency_analysis = {
             "overall_score": consistency_result.get("overall_score", 0.0),
             "is_consistent": consistency_result.get("is_consistent", False),
-            "checks_performed": {
-                "contradiction_check": {
-                    "passed": not contradiction_details.get(
-                        "has_contradictions", False
-                    ),
-                    "score": contradiction_details.get(
-                        "contradiction_score", 0.0
-                    ),
-                    "issues_found": len(
-                        contradiction_details.get("contradictions", [])
-                    )
-                },
-                "factual_alignment": {
-                    "score": factual_alignment.get("alignment_score", 0.0),
-                    "supported_claims": factual_alignment.get(
-                        "supported_claims", 0
-                    ),
-                    "unsupported_claims": factual_alignment.get(
-                        "unsupported_claims", 0
-                    )
-                }
-            },
+            "checks": consistency_result.get("checks", {}),
             "recommendations": consistency_result.get("recommendations", [])
         }
 
@@ -340,18 +314,8 @@ class MultiAgentOrchestrator:
             "confidence_level": confidence_result.get(
                 "confidence_level", "low"
             ),
-            "components": {
-                "source_reliability": confidence_result.get(
-                    "source_reliability", 0.0
-                ),
-                "answer_completeness": confidence_result.get(
-                    "answer_completeness", 0.0
-                ),
-                "topic_coverage": confidence_result.get("topic_coverage", 0.0)
-            },
-            "quality_indicators": confidence_result.get(
-                "quality_indicators", {}
-            ),
+            "components": confidence_result.get("components", {}),
+            "analysis": confidence_result.get("analysis", {}),
             "recommendations": confidence_result.get("recommendations", [])
         }
 

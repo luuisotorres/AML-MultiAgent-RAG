@@ -215,6 +215,7 @@ __marimo__/
 qdrant_storage/
 docs/processed_docs/*.json
 docs/embeddings/
+data/
 
 # Files
 test_multiagent.py

@@ -9,7 +9,10 @@ This agent validates the consistency and coherence of RAG responses by:
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+import re
+from openai import OpenAI
+from backend.core.config.settings import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,8 +33,40 @@ class ConsistencyAgent:
     def __init__(self):
         """Initialize the Consistency Agent."""
         logger.info("Initializing Consistency Agent...")
+        if not settings.OPENAI_API_KEY:
+            raise ValueError(
+                "OPENAI_API_KEY is not set. Please configure it in your "
+                "environment."
+            )
+        self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        logger.info("OpenAI client initialized for Consistency Agent")
         self.jurisdictions = ["usa", "eu", "brazil"]
         logger.info("Consistency Agent initialized successfully")
+
+    async def _get_llm_evaluation(
+        self, prompt: str, max_tokens: int = 200
+    ) -> str:
+        """Get evaluation from the LLM."""
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an expert in AML compliance "
+                            "and consistency checking."
+                        )
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=max_tokens,
+                temperature=0.1,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Error getting LLM evaluation: {e}")
+            return ""
 
     async def validate_response(
         self,
@@ -54,16 +89,16 @@ class ConsistencyAgent:
 
         try:
             # Run all consistency checks
-            citation_check = self._validate_citations(
+            citation_check = await self._validate_citations(
                 answer, sources
             )
             jurisdiction_check = self._validate_jurisdictions(
                 question, sources
             )
-            contradiction_check = self._check_contradictions(
+            contradiction_check = await self._check_contradictions(
                 question, answer, sources
             )
-            relevance_check = self._validate_relevance(
+            relevance_check = await self._validate_relevance(
                 question, sources
             )
 
@@ -115,11 +150,12 @@ class ConsistencyAgent:
                 )
             }
 
-    def _validate_citations(
+    async def _validate_citations(
         self, answer: str, sources: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        Validate that the answer properly references the provided sources.
+        Validate that the answer properly references the provided sources
+        using an LLM.
 
         Args:
             answer (str): Generated answer text
@@ -128,47 +164,46 @@ class ConsistencyAgent:
         Returns:
             Dict[str, Any]: Citation validation results
         """
-        logger.debug("Validating citations...")
+        logger.debug("Validating citations with LLM...")
 
         try:
-            source_filenames = [doc.get("filename", "") for doc in sources]
+            prompt = f"""
+            Please evaluate if the answer properly cites the provided sources.
+            Provide a score from 0.0 to 1.0, where 1.0 means all claims are
+            well-supported by citations.
+            Also, list any claims in the answer that are not
+            supported by the sources.
 
-            citations_found = []
-            for filename in source_filenames:
-                if filename and (
-                    filename.lower() in answer.lower() or
-                    any(
-                        part in answer.lower()
-                        for part in filename.lower().split('.')
-                    )
-                ):
-                    citations_found.append(filename)
+            Answer: {answer}
+            Sources: {[source['content'] for source in sources]}
 
-            # Score based on citation coverage
-            citation_ratio = (
-                len(citations_found) / len(source_filenames) if
-                source_filenames else 0
+            Score:
+            Unsupported Claims:
+            """
+            llm_response = await self._get_llm_evaluation(prompt)
+
+            score_match = re.search(r"Score:\s*(\d\.\d+)", llm_response)
+            score = float(score_match.group(1)) if score_match else 0.5
+
+            unsupported_claims_match = re.search(
+                r"Unsupported Claims:\s*(.*)", llm_response, re.DOTALL
             )
+            if unsupported_claims_match:
+                issues = unsupported_claims_match.group(1).strip().split('\n')
+            else:
+                issues = []
 
             return {
-                "score": min(citation_ratio + 0.3, 1.0),
-                "citations_found": citations_found,
-                "total_sources": len(source_filenames),
-                "issues": (
-                    [] if citation_ratio > 0.3
-                    else ["Low citation coverage in response"]
-                )
+                "score": score,
+                "issues": issues
             }
-
         except Exception as e:
             logger.error(f"Error validating citations: {e}")
-            return (
-                {
-                    "score": 0.0,
-                    "error": str(e),
-                    "issues": ["Citation validation failed"]
-                }
-            )
+            return {
+                "score": 0.0,
+                "error": str(e),
+                "issues": ["Citation validation failed"]
+            }
 
     def _validate_jurisdictions(
         self, question: str, sources: List[Dict[str, Any]]
@@ -265,14 +300,15 @@ class ConsistencyAgent:
                 }
             )
 
-    def _check_contradictions(
+    async def _check_contradictions(
         self,
         question: str,
         answer: str,
         sources: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        Check for contradictions within the agent's answer.
+        Check for contradictions within the agent's answer and sources
+        using an LLM.
 
         Args:
             question (str): User question
@@ -282,86 +318,39 @@ class ConsistencyAgent:
         Returns:
             Dict[str, Any]: Contradiction analysis results
         """
-        logger.debug("Checking for contradictions...")
+        logger.debug("Checking for contradictions with LLM...")
 
         try:
-            sentences = answer.split('. ')
+            prompt = f"""
+            Please check for any contradictions in the provided answer or
+            between the answer and the sources.
+            Provide a score from 0.0 to 1.0, where 1.0 means no contradictions
+            were found.
+            Also, list any contradictions you find.
 
-            if len(sentences) < 2:
-                logger.debug("Answer too short for contradiction check")
+            Answer: {answer}
+            Sources: {[source['content'] for source in sources]}
 
-                return {
-                    "score": 1.0,
-                    "contradictions": [],
-                    "issues": []
-                }
+            Score:
+            Contradictions:
+            """
+            llm_response = await self._get_llm_evaluation(prompt)
 
-            contradictions = []
+            score_match = re.search(r"Score:\s*(\d\.\d+)", llm_response)
+            score = float(score_match.group(1)) if score_match else 0.5
 
-            contradiction_patterns = [
-                (
-                    ["required", "mandatory", "must"],
-                    ["optional", "voluntary", "may"]
-                ),
-                (
-                    ["prohibited", "forbidden", "banned"],
-                    ["allowed", "permitted", "can"]
-                ),
-                (
-                    ["minimum of", "at least"],
-                    ["maximum of", "no more than"]
-                ),
-            ]
-
-            for pattern in contradiction_patterns:
-                positive_sentences = []
-                negative_sentences = []
-
-                for i, sentence in enumerate(sentences):
-                    sentence_lower = sentence.lower()
-                    if any(
-                        term in sentence_lower for term in pattern[0]
-                    ):
-                        positive_sentences.append(i)
-                    if any(
-                        term in sentence_lower for term in pattern[1]
-                    ):
-                        negative_sentences.append(i)
-
-                if positive_sentences and negative_sentences:
-                    logger.debug(
-                        f"Found potential contradiction: {pattern[0][0]} vs "
-                        f"{pattern[1][0]} "
-                        f"in sentences {positive_sentences} and "
-                        f"{negative_sentences}"
-                    )
-                    contradictions.append(
-                        {
-                            "type": f"{pattern[0][0]} vs {pattern[1][0]}",
-                            "positive_sentences": positive_sentences,
-                            "negative_sentences": negative_sentences
-                        }
-                    )
-
-            score = max(1.0 - (len(contradictions) * 0.4), 0.0)
-
-            logger.debug(
-                f"Contradiction check completed - "
-                f"{len(contradictions)} contradictions found - "
-                f"Score: {score}"
+            contradictions_match = re.search(
+                r"Contradictions:\s*(.*)", llm_response, re.DOTALL
+            )
+            issues = (
+                contradictions_match.group(1).strip().split('\n')
+                if contradictions_match else []
             )
 
             return {
                 "score": score,
-                "contradictions": contradictions,
-                "issues": (
-                    [
-                        f"Potential contradiction: {c['type']}"
-                        for c in contradictions
-                    ]
-                )
+                "issues": issues
             }
-
         except Exception as e:
             logger.error(f"Error checking contradictions: {e}")
             return {
@@ -370,11 +359,11 @@ class ConsistencyAgent:
                 "issues": ["Contradiction check failed"]
             }
 
-    def _validate_relevance(
+    async def _validate_relevance(
         self, question: str, sources: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        Validate that sources are relevant to the question.
+        Validate that sources are relevant to the question using an LLM.
 
         Args:
             question (str): User question
@@ -383,55 +372,39 @@ class ConsistencyAgent:
         Returns:
             Dict[str, Any]: Relevance validation results
         """
-        logger.debug("Validating relevance...")
+        logger.debug("Validating relevance with LLM...")
 
         try:
-            question_keywords = self._extract_keywords(question.lower())
+            prompt = f"""
+            Please evaluate the relevance of the provided
+            sources to the question.
+            Provide a score from 0.0 to 1.0, where 1.0 means all sources
+            are highly relevant.
+            Also, list any sources that are not relevant.
 
-            relevant_sources = 0
-            low_relevance_sources = []
+            Question: {question}
+            Sources: {[source['content'] for source in sources]}
 
-            for i, doc in enumerate(sources):
-                content = doc.get("content", "").lower()
-                score = doc.get("score", 0.0)
+            Score:
+            Irrelevant Sources:
+            """
+            llm_response = await self._get_llm_evaluation(prompt)
 
-                keyword_matches = sum(
-                    1 for keyword in question_keywords if keyword in content
-                )
-                keyword_ratio = (
-                    keyword_matches / len(question_keywords)
-                    if question_keywords else 0
-                )
+            score_match = re.search(r"Score:\s*(\d\.\d+)", llm_response)
+            score = float(score_match.group(1)) if score_match else 0.5
 
-                combined_relevance = (score * 0.7) + (keyword_ratio * 0.3)
-
-                if combined_relevance >= 0.5:
-                    relevant_sources += 1
-                else:
-                    low_relevance_sources.append({
-                        "source": i,
-                        "filename": doc.get("filename", "unknown"),
-                        "relevance_score": combined_relevance
-                    })
-
-            relevance_ratio = relevant_sources / len(sources) if sources else 0
-            score = min(relevance_ratio + 0.2, 1.0)
-
-            issues = []
-            if relevance_ratio < 0.6:
-                issues.append(
-                    f"Low relevance: only {relevant_sources}/{len(sources)} "
-                    f"sources highly relevant"
-                )
+            irrelevant_sources_match = re.search(
+                r"Irrelevant Sources:\s*(.*)", llm_response, re.DOTALL
+            )
+            issues = (
+                irrelevant_sources_match.group(1).strip().split('\n')
+                if irrelevant_sources_match else []
+            )
 
             return {
                 "score": score,
-                "relevant_sources": relevant_sources,
-                "total_sources": len(sources),
-                "low_relevance_sources": low_relevance_sources,
                 "issues": issues
             }
-
         except Exception as e:
             logger.error(f"Error validating relevance: {e}")
             return {

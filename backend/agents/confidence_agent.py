@@ -13,6 +13,10 @@ import re
 from statistics import mean, stdev
 from typing import Any, Dict, List
 
+from openai import OpenAI
+
+from backend.core.config.settings import settings
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,6 +38,14 @@ class ConfidenceAgent:
         """Initialize the Confidence Agent."""
         logger.info("Initializing Confidence Agent...")
 
+        if not settings.OPENAI_API_KEY:
+            raise ValueError(
+                "OPENAI_API_KEY is not set. Please configure it in your "
+                "environment."
+            )
+        self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        logger.info("OpenAI client initialized for Confidence Agent")
+
         self.uncertainty_indicators = [
             "may", "might", "could", "possibly", "potentially", "unclear",
             "depends", "varies", "generally", "typically", "usually",
@@ -46,6 +58,31 @@ class ConfidenceAgent:
         ]
 
         logger.info("Confidence Agent initialized successfully")
+
+    async def _get_llm_evaluation(
+        self, prompt: str, max_tokens: int = 150
+    ) -> str:
+        """Get evaluation from the LLM."""
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a helpful assistant for "
+                            "evaluating text quality."
+                        )
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=max_tokens,
+                temperature=0.1,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Error getting LLM evaluation: {e}")
+            return ""
 
     async def evaluate_confidence(
         self,
@@ -70,8 +107,8 @@ class ConfidenceAgent:
 
         try:
             source_confidence = self._analyze_source_quality(sources)
-            answer_confidence = self._analyze_answer_quality(answer)
-            semantic_confidence = self._analyze_semantic_alignment(
+            answer_confidence = await self._analyze_answer_quality(answer)
+            semantic_confidence = await self._analyze_semantic_alignment(
                 question, answer, sources
             )
             uncertainty_analysis = self._analyze_uncertainty_indicators(answer)
@@ -191,9 +228,10 @@ class ConfidenceAgent:
             logger.error(f"Error analyzing source quality: {e}")
             return 0.3
 
-    def _analyze_answer_quality(self, answer: str) -> float:
+    async def _analyze_answer_quality(self, answer: str) -> float:
         """
-        Analyze the quality and completeness of the generated answer.
+        Analyze the quality and completeness of the generated answer using
+        an LLM.
 
         Args:
             answer (str): Generated answer text
@@ -201,71 +239,44 @@ class ConfidenceAgent:
         Returns:
             float: Answer quality confidence score (0.0 - 1.0)
         """
-        logger.debug("Analyzing answer quality...")
+        logger.debug("Analyzing answer quality with LLM...")
 
         if not answer or len(answer.strip()) < 10:
             return 0.1
 
         try:
-            word_count = len(answer.split())
-            if word_count < 20:
-                length_score = word_count / 20.0
-            elif word_count > 300:
-                length_score = max(0.5, 1.0 - (word_count - 300) / 200.0)
-            else:
-                length_score = 1.0
+            prompt = f"""
+            Please evaluate the quality of the following answer.
+            Consider factors like clarity, structure, specificity, and
+            professionalism.
+            Provide a score from 0.0 to 1.0, where 1.0 is a high-quality
+            answer.
+            Also, provide a brief rationale for your score.
 
-            has_structure = any([
-                "." in answer,
-                ":" in answer,
-                answer.count("\n") > 1,
-                any(word in answer.lower() for word in [
-                    "first", "second", "additionally", "furthermore"
-                ])
-            ])
-            structure_score = 1.0 if has_structure else 0.6
+            Answer: {answer}
 
-            specific_terms = [
-                "article", "section", "regulation", "requirement", "percent",
-                "days", "€", "$", "threshold", "minimum", "maximum"
-            ]
-            specificity_count = sum(
-                1 for term in specific_terms if term.lower() in answer.lower()
-            )
-            specificity_score = min(specificity_count / 3.0, 1.0)
+            Score:
+            Rationale:
+            """
+            llm_response = await self._get_llm_evaluation(prompt)
 
-            professional_terms = [
-                "compliance", "regulatory", "pursuant", "accordance",
-                "applicable", "established", "procedures", "framework"
-            ]
-            professional_count = sum(
-                1 for term in professional_terms
-                if term.lower() in answer.lower()
-            )
-            professional_score = min(professional_count / 2.0, 1.0)
-
-            answer_quality = (
-                length_score * 0.3 +
-                structure_score * 0.2 +
-                specificity_score * 0.3 +
-                professional_score * 0.2
-            )
-
-            logger.debug(f"Answer quality analysis: {answer_quality:.3f}")
-            return min(answer_quality, 1.0)
-
+            score_match = re.search(r"Score:\s*(\d\.\d+)", llm_response)
+            if score_match:
+                return float(score_match.group(1))
+            return 0.5
         except Exception as e:
             logger.error(f"Error analyzing answer quality: {e}")
-            return 0.4
+            return 0.3
 
-    def _analyze_semantic_alignment(
+    async def _analyze_semantic_alignment(
         self,
         question: str,
         answer: str,
         sources: List[Dict[str, Any]]
     ) -> float:
         """
-        Analyze semantic alignment between question, answer, and sources.
+        Analyze semantic alignment between question, answer, and sources
+        using an LLM.
 
         Args:
             question (str): Original question
@@ -275,42 +286,28 @@ class ConfidenceAgent:
         Returns:
             float: Semantic alignment confidence score (0.0 - 1.0)
         """
-        logger.debug("Analyzing semantic alignment...")
+        logger.debug("Analyzing semantic alignment with LLM...")
 
         try:
-            question_terms = self._extract_key_terms(question.lower())
-            answer_terms = self._extract_key_terms(answer.lower())
+            prompt = f"""
+            Please evaluate the semantic alignment between the question
+            , answer, and sources.
+            Provide a score from 0.0 to 1.0, where 1.0 is perfect alignment.
+            Also, provide a brief rationale for your score.
 
-            if not question_terms:
-                return 0.5
+            Question: {question}
+            Answer: {answer}
+            Sources: {[source['content'] for source in sources]}
 
-            overlap_ratio = (
-                len(set(question_terms) & set(answer_terms)) /
-                len(question_terms)
-            )
+            Score:
+            Rationale:
+            """
+            llm_response = await self._get_llm_evaluation(prompt)
 
-            question_type_addressed = self._check_question_type_addressed(
-                question, answer
-            )
-
-            source_relevance = 0.0
-            if sources:
-                relevant_sources = 0
-                for source in sources:
-                    content = source.get("content", "").lower()
-                    if any(term in content for term in question_terms):
-                        relevant_sources += 1
-                source_relevance = relevant_sources / len(sources)
-
-            alignment_score = (
-                overlap_ratio * 0.4 +
-                question_type_addressed * 0.3 +
-                source_relevance * 0.3
-            )
-
-            logger.debug(f"Semantic alignment analysis: {alignment_score:.3f}")
-            return min(alignment_score, 1.0)
-
+            score_match = re.search(r"Score:\s*(\d\.\d+)", llm_response)
+            if score_match:
+                return float(score_match.group(1))
+            return 0.5
         except Exception as e:
             logger.error(f"Error analyzing semantic alignment: {e}")
             return 0.5
